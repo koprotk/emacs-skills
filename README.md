@@ -1,29 +1,88 @@
 # koprotk-emacs-skill
 
-Claude Code plugin that routes file edits and content searches through a running Emacs server, so your Eglot save hooks (LSP fixes, indentation) and Emacs config apply to agent changes.
+Claude Code plugin that routes file edits and content searches through a running Emacs server, so your Eglot save hooks (LSP fixes, indentation) and the rest of your Emacs config apply to agent changes.
 
-Load it locally: `claude --plugin-dir /path/to/this/repo`. Requires a running Emacs server (`M-x server-start`) and `rg` on the Emacs `exec-path`.
+This is a personal plugin. The name only exists to tell it apart from xenodium's `emacs-skills`.
+
+## Requirements
+
+- A running Emacs server (`M-x server-start`) and `emacsclient` on `PATH`.
+- Emacs 27+ (uses `json-parse-string`; developed against Emacs 30).
+- `rg` (ripgrep) on Emacs' `exec-path`.
+- `python3` for the hook script.
+
+## Install
+
+Load it locally:
+
+```sh
+claude --plugin-dir /path/to/this/repo
+```
+
+There is no marketplace; the plugin manifest is `.claude-plugin/plugin.json`.
+
+## What it does
+
+A single `PreToolUse` hook (`hooks/route-edits.py`) intercepts `Edit`, `Write`, `Grep` and `Bash`, and performs the work inside Emacs through `emacsclient`. The native tool call is then skipped and the result is returned to the agent in the hook's message.
+
+### Edits and saves
+
+- **Edit / Write** are applied in the file's Emacs buffer (`elisp/koprotk-edit.el`) and saved with `save-buffer`. Undo history and open buffers behave as if you made the edit yourself.
+- **Save hooks run.** Your `before-save-hook` / `after-save-hook` (formatters, Eglot code actions such as `source.fixAll`) fire on every agent edit. The plugin ships none of them; add them in your own config.
+- **The agent is told what saving changed.** If hooks rewrote the text, it receives a diff (its text to the saved text). If a hook raised an error, it receives the message, since Emacs demotes those errors and saves anyway.
+- **Failed saves roll back** the edit, so a broken save never leaves a modified buffer behind.
+- **Unsaved changes are protected.** If the target buffer has unsaved changes, or is read-only, the edit is refused with a message. A buffer whose file changed on disk is reverted before the edit.
+- **No hangs.** Emacs questions during an edit (`yes-or-no-p`, `y-or-n-p`) become errors instead of blocking the server.
+
+### Searches
+
+- **Grep** runs ripgrep from inside Emacs (`elisp/koprotk-search.el`), so it uses your `exec-path` and respects `.gitignore`. All output modes and the `-i`, `-A/-B/-C`, `glob`, `type`, `multiline`, `head_limit` and `offset` options are supported.
+- **Scope** is the directory Claude Code was launched in, or the `path` the Grep call passes. It is not tied to an Emacs project (`project.el`) or your current buffer.
+- ripgrep is run directly rather than through `xref-matches-in-directory`, because xref would translate the agent's Rust regexes as Emacs regexps.
+- Set `koprotk-search-show-results` to `t` to also show hits in an xref buffer (displayed without taking focus).
+
+### Bash guard
+
+Shell commands that bypass Emacs are denied with a pointer to the right tool:
+
+- **File writes**: `sed -i`, `perl -i`, `tee`, and `>` / `>>` redirects. Scratch targets (`/dev/`, `/tmp/`, `$TMPDIR`) are allowed.
+- **Content searches**: `rg`, `grep -r`, `git grep`, `find | xargs grep`. Plain `grep` in a pipe and `rg --files` are untouched.
 
 ## Skills
 
 ### emacsclient (auto)
 
-Always prefer `emacsclient` over `emacs` when the agent needs to interact with Emacs. This skill is not a slash command; it activates automatically.
+Always prefer `emacsclient` over `emacs` when the agent needs to interact with Emacs. Not a slash command; it activates automatically. It also tells the agent how the hook behaves so it does not retry a routed call.
 
-## Hooks
+## Configuration
 
-### Edits and searches inside Emacs (auto)
+| Setting | Where | Effect |
+| :- | :- | :- |
+| `KOPROTK_EMACS_EDIT=off` | environment | Disables the hook entirely |
+| `KOPROTK_EMACS_SOCKET` | environment | Targets a specific Emacs server socket |
+| `koprotk-search-show-results` | Emacs variable | Also show Grep hits in an xref buffer |
 
-`hooks/route-edits.py` is a `PreToolUse` hook that routes file edits and content searches through the running Emacs server instead of touching the filesystem directly.
+If Emacs is not reachable, edits and searches fail with a message to start the server.
 
-- **Edit / Write**: applied in the file's Emacs buffer via `emacsclient` (`elisp/koprotk-edit.el`), saved, and the native tool call is skipped. Undo history, open buffers, and save hooks all behave as if you made the edit yourself.
-- **Bash**: commands that write files (`sed -i`, `perl -i`, `tee`, `>` / `>>` redirects) are denied with a pointer to the Emacs path. Scratch targets (`/dev/`, `/tmp/`, `$TMPDIR`) are allowed.
-- **Grep**: ripgrep runs from inside Emacs (`elisp/koprotk-search.el`, so it uses your `exec-path` and respects `.gitignore`), and the hits are returned to the agent. Bash content searches (`rg`, `grep -r`, `git grep`, `find | xargs grep`) are denied with a pointer to the Grep tool; plain `grep` in a pipe is untouched. Set `koprotk-search-show-results` to `t` to also show hits in an xref buffer. ripgrep is run directly, not through `xref-matches-in-directory`, because xref would translate the agent's Rust regexes as Emacs regexps.
-- **Safety**: if the target buffer has unsaved changes, the edit is refused instead of clobbering them. Buffers whose file changed on disk are reverted first.
-- **Save hooks**: saving uses Emacs' own `save-buffer`, so your `before-save-hook` / `after-save-hook` run (formatters, LSP code actions, etc.). The plugin ships none of these; add them in your own config. If hooks change the text, or raise errors (Emacs demotes them and saves anyway), the agent gets a diff or the error message. A failed save rolls the edit back.
-- **Prompts**: Emacs questions during an edit (`yes-or-no-p`, `y-or-n-p`) become errors instead of hanging the server.
-- **Emacs down**: edits fail with a message to start the server (`M-x server-start`).
+## Eglot
 
-Environment variables: `KOPROTK_EMACS_EDIT=off` disables the hook; `KOPROTK_EMACS_SOCKET` targets a specific server socket.
+Starting Eglot is your config's job. `eglot-ensure` waits for a command to run in the buffer, and a buffer the hook opens in the background never gets one. Connect from a hook that fires on file open (for example `(eglot)` in the mode hook) if you want LSP fixes to apply on the first edit of a file you have not opened.
 
-Known limits: `NotebookEdit` is not routed, and scripting-language file writes (`python -c`, `node -e`) can't be detected.
+## Layout
+
+```
+.claude-plugin/plugin.json   plugin manifest
+hooks/hooks.json             registers the PreToolUse hook
+hooks/route-edits.py         hook: routing, Bash guard
+elisp/koprotk-core.el        JSON payload/result protocol, prompt handling
+elisp/koprotk-edit.el        edit + save in the file's buffer
+elisp/koprotk-search.el      ripgrep from Emacs
+skills/emacsclient/SKILL.md  guidance skill
+```
+
+## Known limits
+
+- `NotebookEdit` and `Glob` are not routed.
+- Scripted file writes or searches (`python -c`, `node -e`) cannot be detected.
+- Bash detection is heuristic, so unusual commands can slip through or be flagged.
+- Edited files stay open as buffers in your Emacs.
