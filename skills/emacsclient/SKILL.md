@@ -40,3 +40,11 @@ The user has an Emacs server running. **All** Emacs operations must go through `
 - Use `--eval` when evaluating elisp.
 - Always format `--eval` elisp across multiple lines with proper indentation.
 - Run `emacsclient` commands via the Bash tool.
+
+## File edits
+
+The plugin's `PreToolUse` hook already applies `Edit` and `Write` inside Emacs. When the hook reports "Applied inside Emacs", the change is saved; do not retry. Do not use `sed -i`, `tee`, or `>` redirects to modify files; they are denied.
+
+## Content searches
+
+The plugin's hook runs the Grep tool through ripgrep inside Emacs and returns the results in its message; do not retry. Do not use `rg`, `grep -r`, or `git grep` in Bash; they are denied.

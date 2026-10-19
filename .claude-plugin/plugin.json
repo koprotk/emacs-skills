@@ -1,0 +1,8 @@
+{
+  "name": "koprotk-emacs-skill",
+  "version": "0.1.0",
+  "description": "Routes Claude Code file edits and content searches through a running Emacs server (emacsclient), so Eglot save hooks and your Emacs config apply",
+  "author": {
+    "name": "Daniel Muñoz"
+  }
+}
