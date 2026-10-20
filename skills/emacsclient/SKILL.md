@@ -6,6 +6,8 @@ tools: Bash
 
 # Always use emacsclient
 
+**Only applies when this session runs inside an Emacs agent-shell buffer.** Check once: `echo $INSIDE_EMACS` is not reliable, so instead run `emacsclient --eval '(and (fboundp (quote agent-shell-buffers)) (agent-shell-buffers) t)'`. If it fails or returns `nil`, ignore this skill and use normal tools (the plugin hook is inactive too).
+
 The user has an Emacs server running. **All** Emacs operations must go through `emacsclient`, never `emacs` or `emacs --batch`. This includes both user-requested actions and agent-initiated operations like byte compilation, syntax checking, or running tests.
 
 ## Examples

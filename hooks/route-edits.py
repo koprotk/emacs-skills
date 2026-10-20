@@ -9,6 +9,11 @@
 - Bash: commands that write files (sed -i, perl -i, tee, > redirects) are
   denied with a pointer to the Emacs path.
 
+Everything is gated on agent-shell: the hook only acts when Claude Code was
+launched by an agent-shell buffer of the Emacs server (an agent-shell ACP
+client process is an ancestor of the hook). Otherwise it does nothing and
+the native tools run.
+
 Set KOPROTK_EMACS_EDIT=off to disable. Set KOPROTK_EMACS_SOCKET to target a
 specific Emacs server socket.
 """
@@ -51,7 +56,7 @@ def emacs_apply(payload, entry="koprotk-edit-apply"):
         payload_file = os.path.join(tmp, "payload.json")
         result_file = os.path.join(tmp, "result.json")
         with open(payload_file, "w", encoding="utf-8") as f:
-            json.dump({**payload, "result_file": result_file}, f, ensure_ascii=False)
+            json.dump({**payload, "result_file": result_file, "ancestor_pids": ancestor_pids()}, f, ensure_ascii=False)
 
         cmd = ["emacsclient"]
         socket = os.environ.get("KOPROTK_EMACS_SOCKET")
@@ -62,16 +67,41 @@ def emacs_apply(payload, entry="koprotk-edit-apply"):
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True, timeout=TIMEOUT)
         except FileNotFoundError:
-            return {"ok": False, "error": "emacsclient not found in PATH"}
+            return {"ok": False, "unreachable": True, "error": "emacsclient not found in PATH"}
         except subprocess.TimeoutExpired:
-            return {"ok": False,
+            return {"ok": False, "unreachable": True,
                     "error": f"emacsclient timed out after {TIMEOUT}s; Emacs may be blocked on a prompt"}
         if not os.path.exists(result_file):
             detail = (proc.stderr or proc.stdout).strip()
-            return {"ok": False,
+            return {"ok": False, "unreachable": True,
                     "error": f"Emacs did not apply the edit (is the server running? M-x server-start): {detail}"}
         with open(result_file, encoding="utf-8") as f:
             return json.load(f)
+
+
+def ancestor_pids():
+    """Pids of this process's ancestors (parent, grandparent, ...)."""
+    try:
+        out = subprocess.run(["ps", "-A", "-o", "pid=,ppid="], capture_output=True,
+                             text=True, timeout=5).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    parents = {}
+    for line in out.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and all(p.isdigit() for p in parts):
+            parents[int(parts[0])] = int(parts[1])
+    pids, pid = [], os.getppid()
+    while pid > 1 and pid not in pids:
+        pids.append(pid)
+        pid = parents.get(pid, 0)
+    return pids
+
+
+def in_agent_shell():
+    """True if Emacs confirms an agent-shell buffer launched this session."""
+    result = emacs_apply({}, "koprotk-gate-apply")
+    return bool(result.get("ok") and result.get("agent_shell"))
 
 
 def resolve(path, cwd):
@@ -93,6 +123,8 @@ def route_edit(tool, tool_input, cwd):
         payload = {"op": "write", "file": file, "content": tool_input.get("content", "")}
 
     result = emacs_apply(payload)
+    if result.get("unreachable") or (result.get("ok") and not result.get("agent_shell")):
+        return  # no Emacs, or not under agent-shell: let the native tool run
     if result.get("ok"):
         reason = (f"Applied inside Emacs via emacsclient: {result.get('message')}. "
                   f"The native {tool} call was skipped on purpose; the change is already saved "
@@ -131,6 +163,8 @@ def route_search(tool_input, cwd):
         "offset": tool_input.get("offset"),
     }
     result = emacs_apply(payload, "koprotk-search-apply")
+    if result.get("unreachable") or (result.get("ok") and not result.get("agent_shell")):
+        return
     if not result.get("ok"):
         deny(f"Grep failed in Emacs: {result.get('error')}")
     reason = ("Search ran inside Emacs (ripgrep). The native Grep call was skipped on purpose; "
@@ -253,7 +287,7 @@ def main():
         route_search(tool_input, cwd)
     elif tool == "Bash":
         reason = bash_block_reason(tool_input.get("command", ""))
-        if reason:
+        if reason and in_agent_shell():
             if "search" in reason or "grep" in reason:
                 deny(f"Content searches are routed through Emacs (detected: {reason}). "
                      "Use the Grep tool; it runs ripgrep inside Emacs.")

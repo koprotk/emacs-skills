@@ -21,6 +21,10 @@ claude --plugin-dir /path/to/this/repo
 
 There is no marketplace; the plugin manifest is `.claude-plugin/plugin.json`.
 
+## agent-shell only
+
+The plugin acts only when Claude Code was launched by an [agent-shell](https://github.com/xenodium/agent-shell) buffer in the Emacs server. The hook sends the pids of its own ancestors to Emacs; Emacs checks whether the ACP client process of any live `agent-shell-mode` buffer is among them. If not (terminal Claude, vterm, no Emacs server), the hook does nothing and the native Edit/Write/Grep/Bash run normally. Bash commands are only checked against Emacs when they would be blocked, so ordinary commands cost nothing.
+
 ## What it does
 
 A single `PreToolUse` hook (`hooks/route-edits.py`) intercepts `Edit`, `Write`, `Grep` and `Bash`, and performs the work inside Emacs through `emacsclient`. The native tool call is then skipped and the result is returned to the agent in the hook's message.
@@ -62,7 +66,7 @@ Always prefer `emacsclient` over `emacs` when the agent needs to interact with E
 | `KOPROTK_EMACS_SOCKET` | environment | Targets a specific Emacs server socket |
 | `koprotk-search-show-results` | Emacs variable | Also show Grep hits in an xref buffer |
 
-If Emacs is not reachable, edits and searches fail with a message to start the server.
+If Emacs is not reachable, the hook cannot verify agent-shell and falls back to the native tools.
 
 ## Eglot
 
