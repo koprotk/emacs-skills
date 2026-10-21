@@ -50,3 +50,16 @@ The plugin's `PreToolUse` hook already applies `Edit` and `Write` inside Emacs. 
 ## Content searches
 
 The plugin's hook runs the Grep tool through ripgrep inside Emacs and returns the results in its message; do not retry. Do not use `rg`, `grep -r`, or `git grep` in Bash; they are denied.
+
+## Reading, finding and symbol lookups
+
+Keep source work inside Emacs/dedicated tools, not Bash text-munging. Do not use `grep`, `find`, `sed`, `awk`, `head` or `tail` in Bash to search, locate or read source (e.g. `grep -n X $(find src -name Foo.java) | head`, `sed -n '47,55p' Foo.java`). Instead:
+
+- **Search text:** the Grep tool (routed through ripgrep in Emacs by the hook). Its `glob` option limits it to one file name (replaces `find`), and `head_limit` replaces `| head`.
+- **Locate files:** the Glob tool.
+- **Read a line range:** the Read tool with `offset`/`limit` (replaces `sed -n`).
+- **Edit:** the Edit tool (replaces `sed -i`; it errors if the old text is not found, where `sed -i` fails silently).
+- **Symbols (Java, etc.):** the LSP tool (`documentSymbol`, `workspaceSymbol`, `findReferences`, `goToDefinition`); the language server answers these more accurately than text matching.
+- **Trimming a command's output:** filter inside Emacs when the tool offers it (e.g. `OUTPUT_GREP`/`OUTPUT_TAIL` in the `eglot-java-test` scripts) rather than piping through `grep`/`tail`.
+
+The plugin hook currently denies only file-writing and recursive-grep Bash patterns; the rest of this section is guidance, not enforcement.
