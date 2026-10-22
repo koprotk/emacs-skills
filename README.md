@@ -13,13 +13,22 @@ This is a personal plugin. The name only exists to tell it apart from xenodium's
 
 ## Install
 
-Load it locally:
+Install through the repo's local marketplace (works for sessions launched by agent-shell, which cannot pass `--plugin-dir`):
+
+```sh
+claude plugin marketplace add /path/to/this/repo
+claude plugin install koprotk-emacs-skill@koprotk
+```
+
+Restart the agent-shell session afterwards. If the upstream `emacs-skills` plugin is also installed, disable it to avoid a duplicate `emacsclient` skill.
+
+For a one-off terminal session you can instead load it directly:
 
 ```sh
 claude --plugin-dir /path/to/this/repo
 ```
 
-There is no marketplace; the plugin manifest is `.claude-plugin/plugin.json`.
+The plugin manifest is `.claude-plugin/plugin.json`; the marketplace manifest is `.claude-plugin/marketplace.json`.
 
 ## agent-shell only
 
@@ -76,6 +85,7 @@ Starting Eglot is your config's job. `eglot-ensure` waits for a command to run i
 
 ```
 .claude-plugin/plugin.json   plugin manifest
+.claude-plugin/marketplace.json  local marketplace manifest
 hooks/hooks.json             registers the PreToolUse hook
 hooks/route-edits.py         hook: routing, Bash guard
 elisp/koprotk-core.el        JSON payload/result protocol, prompt handling
