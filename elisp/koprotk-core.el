@@ -10,13 +10,14 @@
 (require 'json)
 
 (defun koprotk--read-json (file)
-  "Parse FILE as JSON into an alist (false and null become nil)."
+  "Parse FILE as JSON into an alist (arrays become lists, false and null become nil)."
   (with-temp-buffer
     (let ((coding-system-for-read 'utf-8))
       (insert-file-contents file))
     (goto-char (point-min))
     (json-parse-string (buffer-string)
                        :object-type 'alist
+                       :array-type 'list
                        :false-object nil
                        :null-object nil)))
 
