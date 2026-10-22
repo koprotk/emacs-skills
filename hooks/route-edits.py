@@ -7,7 +7,8 @@
   returned in the denial message. Bash content searches (rg, grep -r,
   git grep) are denied with a pointer to the Grep tool.
 - Bash: commands that write files (sed -i, perl -i, tee, > redirects) are
-  denied with a pointer to the Emacs path.
+  denied with a pointer to the Emacs path. `find` is denied with a pointer
+  to the Glob tool.
 
 Everything is gated on agent-shell: the hook only acts when Claude Code was
 launched by an agent-shell buffer of the Emacs server (an agent-shell ACP
@@ -266,6 +267,8 @@ def bash_block_reason(command):
             return f"recursive {name}"
         if name in {"find", "xargs"} and any(os.path.basename(a) in {"grep", "egrep", "fgrep", "rg"} for a in args):
             return f"{name} piped into grep"
+        if name == "find":
+            return "file lookup with find"
         if name == "tee":
             targets = [a for a in args if not a.startswith("-")]
             if any(not is_scratch(t) for t in targets):
@@ -288,6 +291,10 @@ def main():
     elif tool == "Bash":
         reason = bash_block_reason(tool_input.get("command", ""))
         if reason and in_agent_shell():
+            if reason == "file lookup with find":
+                deny("File lookups are routed through Emacs-aware tools (detected: find). "
+                     "Use the Glob tool to locate files by name; use Grep with `glob` to "
+                     "search inside them.")
             if "search" in reason or "grep" in reason:
                 deny(f"Content searches are routed through Emacs (detected: {reason}). "
                      "Use the Grep tool; it runs ripgrep inside Emacs.")

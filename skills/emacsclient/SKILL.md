@@ -53,13 +53,23 @@ The plugin's hook runs the Grep tool through ripgrep inside Emacs and returns th
 
 ## Reading, finding and symbol lookups
 
-Keep source work inside Emacs/dedicated tools, not Bash text-munging. Do not use `grep`, `find`, `sed`, `awk`, `head` or `tail` in Bash to search, locate or read source (e.g. `grep -n X $(find src -name Foo.java) | head`, `sed -n '47,55p' Foo.java`). Instead:
+Keep source work inside Emacs/dedicated tools, not Bash text-munging. Do not use `cat`, `grep`, `find`, `sed`, `awk`, `head` or `tail` in Bash to search, locate or read source (e.g. `grep -n X $(find src -name Foo.java) | head`, `sed -n '47,55p' Foo.java`). Instead:
 
 - **Search text:** the Grep tool (routed through ripgrep in Emacs by the hook). Its `glob` option limits it to one file name (replaces `find`), and `head_limit` replaces `| head`.
 - **Locate files:** the Glob tool.
+- **Read a file:** the Read tool (replaces `cat`, including task output files such as `/private/tmp/claude-*/tasks/*.output`).
+- **Read a run/test output buffer (comint, compilation):** read the Emacs buffer, not the `/private/tmp/claude-*/tasks/*.output` file:
+  ```sh
+  emacsclient --eval '
+  (with-current-buffer "*buffer-name*"
+    (buffer-substring-no-properties
+     (max (point-min) (- (point-max) 4000))
+     (point-max)))'
+  ```
+  List candidates with `emacsclient --eval '(mapcar (function buffer-name) (buffer-list))'`. Use the `eglot-java-test` skill's `OUTPUT_GREP`/`OUTPUT_TAIL` to filter test output.
 - **Read a line range:** the Read tool with `offset`/`limit` (replaces `sed -n`).
 - **Edit:** the Edit tool (replaces `sed -i`; it errors if the old text is not found, where `sed -i` fails silently).
 - **Symbols (Java, etc.):** the LSP tool (`documentSymbol`, `workspaceSymbol`, `findReferences`, `goToDefinition`); the language server answers these more accurately than text matching.
 - **Trimming a command's output:** filter inside Emacs when the tool offers it (e.g. `OUTPUT_GREP`/`OUTPUT_TAIL` in the `eglot-java-test` scripts) rather than piping through `grep`/`tail`.
 
-The plugin hook currently denies only file-writing and recursive-grep Bash patterns; the rest of this section is guidance, not enforcement.
+The plugin hook denies file-writing, recursive-grep and `find` Bash patterns (use Glob instead of `find`, e.g. `find src/test -name "Foo.java"` becomes Glob `**/Foo.java`); the rest of this section is guidance, not enforcement.
