@@ -1,8 +1,10 @@
 # koprotk-emacs-skill
 
-Claude Code plugin that routes file edits and content searches through a running Emacs server, so your Eglot save hooks (LSP fixes, indentation) and the rest of your Emacs config apply to agent changes.
+Plugin for [Claude Code](https://claude.com/code) and [OpenCode](https://opencode.ai) that routes file edits and content searches through a running Emacs server, so your Eglot save hooks (LSP fixes, indentation) and the rest of your Emacs config apply to agent changes.
 
 This is a personal plugin. The name only exists to tell it apart from xenodium's `emacs-skills`.
+
+Both agents share the Emacs-side engine (`elisp/`); each has its own thin adapter: Claude Code uses the `hooks/route-edits.py` PreToolUse hook, OpenCode uses the `.opencode/plugins/emacs` plugin. The two adapters live in the same repository without conflict.
 
 ## Requirements
 
@@ -33,6 +35,48 @@ The plugin manifest is `.claude-plugin/plugin.json`; the marketplace manifest is
 ## agent-shell only
 
 The plugin acts only when Claude Code was launched by an [agent-shell](https://github.com/xenodium/agent-shell) buffer in the Emacs server. The hook sends the pids of its own ancestors to Emacs; Emacs checks whether the ACP client process of any live `agent-shell-mode` buffer is among them. If not (terminal Claude, vterm, no Emacs server), the hook does nothing and the native Edit/Write/Grep/Bash run normally. Bash commands are only checked against Emacs when they would be blocked, so ordinary commands cost nothing.
+
+## OpenCode
+
+The same routing is available as an OpenCode V2 plugin in this repository, at
+`.opencode/plugins/emacs/index.ts`. It reuses the same `elisp/` files — the
+Emacs-side protocol is shared; only the authorization gate differs.
+
+### Install
+
+OpenCode auto-loads `.opencode/plugins/` and `.opencode/skills/` when they are
+in the current project. To use this from any project, point your OpenCode config
+at them, for example in `~/.config/opencode/opencode.json`:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "plugins": ["/path/to/this/repo/.opencode/plugins/emacs"],
+  "skills": ["/path/to/this/repo/.opencode/skills"]
+}
+```
+
+### Behavior
+
+- **`edit` / `write`** are applied in the file's Emacs buffer and saved, so your
+  save hooks run (identical to the Claude path).
+- **`grep`** runs ripgrep inside Emacs when the `grep` tool is available. Some
+  models are not given `grep`/`glob` by OpenCode and use `rg`/`find` in the
+  shell instead; that is accepted and left unblocked (see the note in the skill).
+- The **shell guard** blocks only file-writing patterns (`sed -i`, `perl -i`,
+  `tee`, `>`/`>>` redirects). Content-search shell commands are left alone —
+  guided by the skill rather than denied — to avoid breaking models without
+  `grep`/`glob`.
+
+### Configuration
+
+The Claude environment variables also apply here:
+
+| Setting | Effect |
+| :- | :- |
+| `KOPROTK_EMACS_EDIT=off` | Disables routing entirely (native tools run) |
+| `KOPROTK_EMACS_SOCKET` | Targets a specific Emacs server socket |
+| `KOPROTK_EMACS_ELISP_DIR` | Overrides the directory containing the elisp files |
 
 ## What it does
 
@@ -91,7 +135,10 @@ hooks/route-edits.py         hook: routing, Bash guard
 elisp/koprotk-core.el        JSON payload/result protocol, prompt handling
 elisp/koprotk-edit.el        edit + save in the file's buffer
 elisp/koprotk-search.el      ripgrep from Emacs
-skills/emacsclient/SKILL.md  guidance skill
+elisp/koprotk-opencode.el    OpenCode entry points (separate gate)
+skills/emacsclient/SKILL.md  Claude Code guidance skill
+.opencode/plugins/emacs/index.ts   OpenCode plugin (routing, shell guard)
+.opencode/skills/emacsclient/SKILL.md  OpenCode guidance skill
 ```
 
 ## Known limits

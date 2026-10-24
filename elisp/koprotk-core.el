@@ -50,17 +50,22 @@ ANCESTOR-PIDS are the ancestors of the calling hook, so this is true only
 when Claude Code was launched by agent-shell in this Emacs."
   (cl-intersection (koprotk--agent-shell-pids) ancestor-pids))
 
-(defun koprotk-run (payload-file handler)
+(defun koprotk-run (payload-file handler &optional gate)
   "Read PAYLOAD-FILE, call HANDLER on the payload, write the outcome.
 HANDLER returns an alist merged into the result.  Errors become
 {ok: false, error: ...}.  The outcome goes to the payload's result_file.
-HANDLER only runs when the caller descends from an agent-shell process;
+GATE, when given, is called with the payload and must return non-nil to
+authorize the operation.  When GATE is omitted, HANDLER only runs when the
+caller descends from an agent-shell process (Claude Code via agent-shell);
 otherwise the result is {ok: true, agent_shell: false}."
   (let* ((payload (koprotk--read-json payload-file))
          (result-file (alist-get 'result_file payload))
+         (allowed (if gate
+                      (funcall gate payload)
+                    (koprotk--from-agent-shell-p (alist-get 'ancestor_pids payload))))
          (result
           (condition-case err
-              (if (not (koprotk--from-agent-shell-p (alist-get 'ancestor_pids payload)))
+              (if (not allowed)
                   '((ok . t) (agent_shell . :json-false))
                (let ((large-file-warning-threshold nil)
                     (enable-local-variables :safe)
