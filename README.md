@@ -1,10 +1,10 @@
 # koprotk-emacs-skill
 
-Plugin for [Claude Code](https://claude.com/code) and [OpenCode](https://opencode.ai) that routes file edits and content searches through a running Emacs server, so your Eglot save hooks (LSP fixes, indentation) and the rest of your Emacs config apply to agent changes.
+Plugin for [Claude Code](https://claude.com/code), [GitHub Copilot CLI](https://github.com/github/copilot-cli) and [OpenCode](https://opencode.ai) that routes file edits and content searches through a running Emacs server, so your Eglot save hooks (LSP fixes, indentation) and the rest of your Emacs config apply to agent changes.
 
 This is a personal plugin. The name only exists to tell it apart from xenodium's `emacs-skills`.
 
-Both agents share the Emacs-side engine (`elisp/`); each has its own thin adapter: Claude Code uses the `hooks/route-edits.py` PreToolUse hook, OpenCode uses the `.opencode/plugins/emacs` plugin. The two adapters live in the same repository without conflict.
+Both agents share the Emacs-side engine (`elisp/`); each has its own thin adapter: Claude Code uses the `hooks/route-edits.py` PreToolUse hook, GitHub Copilot CLI reuses that same hook (Copilot reads Claude Code plugins and runs the hook on its own events), and OpenCode uses the `.opencode/plugins/emacs` plugin. The adapters live in the same repository without conflict.
 
 ## Requirements
 
@@ -34,7 +34,39 @@ The plugin manifest is `.claude-plugin/plugin.json`; the marketplace manifest is
 
 ## agent-shell only
 
-The plugin acts only when Claude Code was launched by an [agent-shell](https://github.com/xenodium/agent-shell) buffer in the Emacs server. The hook sends the pids of its own ancestors to Emacs; Emacs checks whether the ACP client process of any live `agent-shell-mode` buffer is among them. If not (terminal Claude, vterm, no Emacs server), the hook does nothing and the native Edit/Write/Grep/Bash run normally. Bash commands are only checked against Emacs when they would be blocked, so ordinary commands cost nothing.
+The plugin acts only when the agent was launched by an [agent-shell](https://github.com/xenodium/agent-shell) buffer in the Emacs server. The hook sends the pids of its own ancestors to Emacs; Emacs checks whether the ACP client process of any live `agent-shell-mode` buffer is among them. If not (terminal Claude/Copilot, vterm, no Emacs server), the hook does nothing and the native Edit/Write/Grep/Bash run normally. Bash commands are only checked against Emacs when they would be blocked, so ordinary commands cost nothing.
+
+## GitHub Copilot CLI
+
+Copilot CLI reads Claude Code plugins, so the **same** `.claude-plugin`
+manifest and `hooks/route-edits.py` PreToolUse hook drive it — there is no
+separate Copilot adapter. Copilot runs the hook on its own `Edit`, `Write`,
+`Grep` and `Bash` events with Claude Code's field names (`tool_name`,
+`tool_input`, `session_id`), and honours the hook's `deny` decision. It names a
+few `tool_input` fields differently, so the hook reads both conventions:
+
+| Tool | Claude Code | Copilot CLI |
+| :- | :- | :- |
+| Edit | `file_path` / `old_string` / `new_string` | `path` / `old_str` / `new_str` |
+| Write | `file_path` / `content` | `path` / `file_text` |
+| Grep | `path` (string) | `paths` (string or array) |
+
+The agent-shell gate is agent-neutral (it matches ancestor pids), so routing
+and the `KOPROTK_EMACS_*` environment variables behave exactly as they do for
+Claude Code.
+
+### Install
+
+```sh
+copilot plugin marketplace add /path/to/this/repo
+copilot plugin install koprotk-emacs-skill@koprotk
+```
+
+Copilot only loads a repository's plugin hooks once the working directory is
+trusted (add it to `trustedFolders` in `~/.copilot/config.json`, or launch with
+`--trust-folder`); an untrusted folder prints a "Skipped repository hooks"
+warning and the native tools run. If the upstream `emacs-skills` plugin is also
+installed, disable it to avoid a duplicate `emacsclient` skill.
 
 ## OpenCode
 
@@ -131,12 +163,12 @@ Starting Eglot is your config's job. `eglot-ensure` waits for a command to run i
 .claude-plugin/plugin.json   plugin manifest
 .claude-plugin/marketplace.json  local marketplace manifest
 hooks/hooks.json             registers the PreToolUse hook
-hooks/route-edits.py         hook: routing, Bash guard
+hooks/route-edits.py         hook: routing, Bash guard (Claude Code + Copilot CLI)
 elisp/koprotk-core.el        JSON payload/result protocol, prompt handling
 elisp/koprotk-edit.el        edit + save in the file's buffer
 elisp/koprotk-search.el      ripgrep from Emacs
 elisp/koprotk-opencode.el    OpenCode entry points (separate gate)
-skills/emacsclient/SKILL.md  Claude Code guidance skill
+skills/emacsclient/SKILL.md  Claude Code / Copilot CLI guidance skill
 .opencode/plugins/emacs/index.ts   OpenCode plugin (routing, shell guard)
 .opencode/skills/emacsclient/SKILL.md  OpenCode guidance skill
 ```

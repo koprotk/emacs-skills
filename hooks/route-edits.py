@@ -10,10 +10,18 @@
   denied with a pointer to the Emacs path. `find` is denied with a pointer
   to the Glob tool.
 
-Everything is gated on agent-shell: the hook only acts when Claude Code was
+Everything is gated on agent-shell: the hook only acts when the agent was
 launched by an agent-shell buffer of the Emacs server (an agent-shell ACP
 client process is an ancestor of the hook). Otherwise it does nothing and
 the native tools run.
+
+This hook serves both Claude Code and GitHub Copilot CLI, which reads Claude
+Code plugins and runs this PreToolUse hook on its own events with Claude's
+field names (tool_name, tool_input). The two agents name the tool_input
+fields differently, so the fields are read under both conventions:
+    Edit:  file_path/old_string/new_string (Claude)  path/old_str/new_str (Copilot)
+    Write: file_path/content               (Claude)  path/file_text       (Copilot)
+    Grep:  path                            (Claude)  paths                (Copilot)
 
 Set KOPROTK_EMACS_EDIT=off to disable. Set KOPROTK_EMACS_SOCKET to target a
 specific Emacs server socket.
@@ -110,18 +118,28 @@ def resolve(path, cwd):
     return path if os.path.isabs(path) else os.path.join(cwd, path)
 
 
+def field(tool_input, *names, default=None):
+    """First non-None value among NAMES in TOOL_INPUT (Claude or Copilot key)."""
+    for name in names:
+        value = tool_input.get(name)
+        if value is not None:
+            return value
+    return default
+
+
 def route_edit(tool, tool_input, cwd):
-    file = resolve(tool_input.get("file_path", ""), cwd)
+    file = resolve(field(tool_input, "file_path", "path", default=""), cwd)
     if tool == "Edit":
         payload = {
             "op": "edit",
             "file": file,
-            "old": tool_input.get("old_string", ""),
-            "new": tool_input.get("new_string", ""),
+            "old": field(tool_input, "old_string", "old_str", default=""),
+            "new": field(tool_input, "new_string", "new_str", default=""),
             "replace_all": bool(tool_input.get("replace_all")),
         }
     else:
-        payload = {"op": "write", "file": file, "content": tool_input.get("content", "")}
+        payload = {"op": "write", "file": file,
+                   "content": field(tool_input, "content", "file_text", default="")}
 
     result = emacs_apply(payload)
     if result.get("unreachable") or (result.get("ok") and not result.get("agent_shell")):
@@ -147,10 +165,15 @@ def route_edit(tool, tool_input, cwd):
 
 
 def route_search(tool_input, cwd):
+    # Claude Code passes `path` (string); Copilot passes `paths` (string or
+    # array). ripgrep is run once, so a list is reduced to its first entry.
+    raw_path = field(tool_input, "path", "paths")
+    if isinstance(raw_path, list):
+        raw_path = raw_path[0] if raw_path else None
     payload = {
         "cwd": cwd,
         "pattern": tool_input.get("pattern", ""),
-        "path": resolve(tool_input["path"], cwd) if tool_input.get("path") else cwd,
+        "path": resolve(raw_path, cwd) if raw_path else cwd,
         "glob": tool_input.get("glob"),
         "type": tool_input.get("type"),
         "mode": tool_input.get("output_mode") or "files_with_matches",
