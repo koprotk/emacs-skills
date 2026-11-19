@@ -72,4 +72,4 @@ Keep source work inside Emacs/dedicated tools, not Bash text-munging. Do not use
 - **Symbols (Java, etc.):** the LSP tool (`documentSymbol`, `workspaceSymbol`, `findReferences`, `goToDefinition`); the language server answers these more accurately than text matching.
 - **Trimming a command's output:** filter inside Emacs when the tool offers it (e.g. `OUTPUT_GREP`/`OUTPUT_TAIL` in the `eglot-java-test` scripts) rather than piping through `grep`/`tail`.
 
-The plugin hook denies file-writing, recursive-grep and `find` Bash patterns (use Glob instead of `find`, e.g. `find src/test -name "Foo.java"` becomes Glob `**/Foo.java`); the rest of this section is guidance, not enforcement.
+The plugin hook denies only file-writing Bash patterns; this section is guidance, not enforcement. Still prefer Glob over `find` (e.g. `find src/test -name "Foo.java"` becomes Glob `**/Foo.java`).

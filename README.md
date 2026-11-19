@@ -132,10 +132,10 @@ A single `PreToolUse` hook (`hooks/route-edits.py`) intercepts `Edit`, `Write`, 
 
 ### Bash guard
 
-Shell commands that bypass Emacs are denied with a pointer to the right tool:
+Shell commands that write files behind Emacs' back are denied with a pointer to the right tool:
 
 - **File writes**: `sed -i`, `perl -i`, `tee`, and `>` / `>>` redirects. Scratch targets (`/dev/`, `/tmp/`, `$TMPDIR`) are allowed.
-- **Content searches**: `rg`, `grep -r`, `git grep`, `find | xargs grep`. Plain `grep` in a pipe and `rg --files` are untouched.
+- **Read-only searches** (`find`, `rg`, `grep -r`, `git grep`) are left alone: denying them shows as a failed (❌) tool call in agent-shell even though the agent just retries. The `Grep` tool is still routed through Emacs.
 
 ## Skills
 

@@ -4,11 +4,11 @@
 - Edit/Write: applied inside the running Emacs via emacsclient, then the
   native tool call is denied (the change is already on disk).
 - Grep: ripgrep runs inside Emacs (elisp/koprotk-search.el); results are
-  returned in the denial message. Bash content searches (rg, grep -r,
-  git grep) are denied with a pointer to the Grep tool.
+  returned in the denial message.
 - Bash: commands that write files (sed -i, perl -i, tee, > redirects) are
-  denied with a pointer to the Emacs path. `find` is denied with a pointer
-  to the Glob tool.
+  denied with a pointer to the Emacs path. Read-only searches (find, rg,
+  grep -r, git grep) run natively: denying them shows up as a failed tool
+  call in agent-shell even though the agent just retries with another tool.
 
 Everything is gated on agent-shell: the hook only acts when the agent was
 launched by an agent-shell buffer of the Emacs server (an agent-shell ACP
@@ -280,18 +280,6 @@ def bash_block_reason(command):
         if name in {"perl", "ruby"} and any(
                 re.match(r"^-[a-hj-zA-Z]*i", a) and not a.startswith(("-M", "-m")) for a in args):
             return f"{name} -i"
-        if name in {"rg", "ag", "ack"} and "--files" not in args:
-            return f"content search with {name}"
-        if name == "git" and args[:1] == ["grep"]:
-            return "git grep"
-        if name in {"grep", "egrep", "fgrep"} and any(
-                re.match(r"^-[a-zA-Z]*[rR]", a) or a.startswith(("--recursive", "--include", "--exclude"))
-                for a in args):
-            return f"recursive {name}"
-        if name in {"find", "xargs"} and any(os.path.basename(a) in {"grep", "egrep", "fgrep", "rg"} for a in args):
-            return f"{name} piped into grep"
-        if name == "find":
-            return "file lookup with find"
         if name == "tee":
             targets = [a for a in args if not a.startswith("-")]
             if any(not is_scratch(t) for t in targets):
@@ -314,13 +302,6 @@ def main():
     elif tool == "Bash":
         reason = bash_block_reason(tool_input.get("command", ""))
         if reason and in_agent_shell():
-            if reason == "file lookup with find":
-                deny("File lookups are routed through Emacs-aware tools (detected: find). "
-                     "Use the Glob tool to locate files by name; use Grep with `glob` to "
-                     "search inside them.")
-            if "search" in reason or "grep" in reason:
-                deny(f"Content searches are routed through Emacs (detected: {reason}). "
-                     "Use the Grep tool; it runs ripgrep inside Emacs.")
             deny(f"Shell file edits are routed through Emacs (detected: {reason}). "
                  "Use the Edit or Write tool (applied in Emacs via emacsclient), or "
                  "emacsclient --eval. Redirecting to /tmp is allowed for scratch output.")
