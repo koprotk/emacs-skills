@@ -32,9 +32,9 @@ claude --plugin-dir /path/to/this/repo
 
 The plugin manifest is `.claude-plugin/plugin.json`; the marketplace manifest is `.claude-plugin/marketplace.json`.
 
-## agent-shell only
+## Requires a running Emacs server
 
-The plugin acts only when the agent was launched by an [agent-shell](https://github.com/xenodium/agent-shell) buffer in the Emacs server. The hook sends the pids of its own ancestors to Emacs; Emacs checks whether the ACP client process of any live `agent-shell-mode` buffer is among them. If not (terminal Claude/Copilot, vterm, no Emacs server), the hook does nothing and the native Edit/Write/Grep/Bash run normally. Bash commands are only checked against Emacs when they would be blocked, so ordinary commands cost nothing.
+The plugin acts whenever an Emacs server is reachable via `emacsclient` (any terminal Claude/Copilot session works; agent-shell is not required). If Emacs is not reachable, the hook does nothing and the native Edit/Write/Grep/Bash run normally. Bash commands are only checked against Emacs when they would be blocked, so ordinary commands cost nothing.
 
 ## GitHub Copilot CLI
 
@@ -51,8 +51,7 @@ few `tool_input` fields differently, so the hook reads both conventions:
 | Write | `file_path` / `content` | `path` / `file_text` |
 | Grep | `path` (string) | `paths` (string or array) |
 
-The agent-shell gate is agent-neutral (it matches ancestor pids), so routing
-and the `KOPROTK_EMACS_*` environment variables behave exactly as they do for
+Routing and the `KOPROTK_EMACS_*` environment variables behave exactly as they do for
 Claude Code.
 
 ### Install
@@ -151,7 +150,7 @@ Always prefer `emacsclient` over `emacs` when the agent needs to interact with E
 | `KOPROTK_EMACS_SOCKET` | environment | Targets a specific Emacs server socket |
 | `koprotk-search-show-results` | Emacs variable | Also show Grep hits in an xref buffer |
 
-If Emacs is not reachable, the hook cannot verify agent-shell and falls back to the native tools.
+If Emacs is not reachable, the hook falls back to the native tools.
 
 ## Eglot
 

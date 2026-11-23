@@ -1,8 +1,8 @@
 ;;; koprotk-opencode.el --- OpenCode entry points for hook-driven Emacs ops  -*- lexical-binding: t; -*-
 
 ;; OpenCode port of the Claude Code plugin.  The Claude hook calls
-;; koprotk-edit-apply / koprotk-search-apply, which gate on agent-shell (an
-;; agent-shell-mode ACP client process being an ancestor of the caller).
+;; koprotk-edit-apply / koprotk-search-apply, which run whenever the Emacs
+;; server is reachable.
 ;; The OpenCode plugin (.opencode/plugins/emacs/index.ts) calls the entry
 ;; points here instead.  They gate on an explicit payload of
 ;; {client: "opencode", enabled: true}, which the plugin only sends after it

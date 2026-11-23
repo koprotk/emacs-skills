@@ -31,38 +31,17 @@
   "Signal an error instead of asking PROMPT, which no one is there to answer."
   (error "Emacs asked a question and was not answered: %s" prompt))
 
-(defun koprotk--agent-shell-pids ()
-  "Return the pids of live ACP client processes of all agent-shell buffers."
-  (let (pids)
-    (dolist (buf (buffer-list))
-      (with-current-buffer buf
-        (when (and (derived-mode-p 'agent-shell-mode)
-                   (boundp 'agent-shell--state)
-                   agent-shell--state)
-          (let ((proc (map-nested-elt agent-shell--state '(:client :process))))
-            (when (and (processp proc) (process-live-p proc))
-              (push (process-id proc) pids))))))
-    pids))
-
-(defun koprotk--from-agent-shell-p (ancestor-pids)
-  "Non-nil if an agent-shell client process is among ANCESTOR-PIDS.
-ANCESTOR-PIDS are the ancestors of the calling hook, so this is true only
-when Claude Code was launched by agent-shell in this Emacs."
-  (cl-intersection (koprotk--agent-shell-pids) ancestor-pids))
-
 (defun koprotk-run (payload-file handler &optional gate)
   "Read PAYLOAD-FILE, call HANDLER on the payload, write the outcome.
 HANDLER returns an alist merged into the result.  Errors become
 {ok: false, error: ...}.  The outcome goes to the payload's result_file.
 GATE, when given, is called with the payload and must return non-nil to
-authorize the operation.  When GATE is omitted, HANDLER only runs when the
-caller descends from an agent-shell process (Claude Code via agent-shell);
-otherwise the result is {ok: true, agent_shell: false}."
+authorize the operation.  When GATE is omitted, HANDLER always runs: a
+reachable Emacs server is the only requirement.  A rejected gate yields
+{ok: true, agent_shell: false}, meaning \"let the native tool run\"."
   (let* ((payload (koprotk--read-json payload-file))
          (result-file (alist-get 'result_file payload))
-         (allowed (if gate
-                      (funcall gate payload)
-                    (koprotk--from-agent-shell-p (alist-get 'ancestor_pids payload))))
+         (allowed (or (null gate) (funcall gate payload)))
          (result
           (condition-case err
               (if (not allowed)
@@ -80,7 +59,7 @@ otherwise the result is {ok: true, agent_shell: false}."
     "done"))
 
 (defun koprotk-gate-apply (payload-file)
-  "Entry point: report whether the caller descends from agent-shell."
+  "Entry point: report that the Emacs server is reachable."
   (koprotk-run payload-file (lambda (_payload) nil)))
 
 (provide 'koprotk-core)

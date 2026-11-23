@@ -8,12 +8,11 @@
 - Bash: commands that write files (sed -i, perl -i, tee, > redirects) are
   denied with a pointer to the Emacs path. Read-only searches (find, rg,
   grep -r, git grep) run natively: denying them shows up as a failed tool
-  call in agent-shell even though the agent just retries with another tool.
+  call in agent UIs even though the agent just retries with another tool.
 
-Everything is gated on agent-shell: the hook only acts when the agent was
-launched by an agent-shell buffer of the Emacs server (an agent-shell ACP
-client process is an ancestor of the hook). Otherwise it does nothing and
-the native tools run.
+The hook only acts when an Emacs server is reachable (emacsclient works).
+Otherwise it does nothing and the native tools run. agent-shell is not
+required.
 
 This hook serves both Claude Code and GitHub Copilot CLI, which reads Claude
 Code plugins and runs this PreToolUse hook on its own events with Claude's
@@ -65,7 +64,7 @@ def emacs_apply(payload, entry="koprotk-edit-apply"):
         payload_file = os.path.join(tmp, "payload.json")
         result_file = os.path.join(tmp, "result.json")
         with open(payload_file, "w", encoding="utf-8") as f:
-            json.dump({**payload, "result_file": result_file, "ancestor_pids": ancestor_pids()}, f, ensure_ascii=False)
+            json.dump({**payload, "result_file": result_file}, f, ensure_ascii=False)
 
         cmd = ["emacsclient"]
         socket = os.environ.get("KOPROTK_EMACS_SOCKET")
@@ -88,27 +87,8 @@ def emacs_apply(payload, entry="koprotk-edit-apply"):
             return json.load(f)
 
 
-def ancestor_pids():
-    """Pids of this process's ancestors (parent, grandparent, ...)."""
-    try:
-        out = subprocess.run(["ps", "-A", "-o", "pid=,ppid="], capture_output=True,
-                             text=True, timeout=5).stdout
-    except (OSError, subprocess.TimeoutExpired):
-        return []
-    parents = {}
-    for line in out.splitlines():
-        parts = line.split()
-        if len(parts) == 2 and all(p.isdigit() for p in parts):
-            parents[int(parts[0])] = int(parts[1])
-    pids, pid = [], os.getppid()
-    while pid > 1 and pid not in pids:
-        pids.append(pid)
-        pid = parents.get(pid, 0)
-    return pids
-
-
 def in_agent_shell():
-    """True if Emacs confirms an agent-shell buffer launched this session."""
+    """True if the Emacs server answers (name kept for history)."""
     result = emacs_apply({}, "koprotk-gate-apply")
     return bool(result.get("ok") and result.get("agent_shell"))
 
